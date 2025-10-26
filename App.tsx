@@ -29,7 +29,7 @@ const App = () => {
         <Stack.Screen
           name="ProductList"
           component={ProductListScreen}
-          options={{ title: 'Inventario' }}
+          options={{ title: 'Medicamentos' }}
         />
         <Stack.Screen
           name="ProductDetail"
