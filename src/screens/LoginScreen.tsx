@@ -1,106 +1,166 @@
-import React, { useState } from 'react';
+// src/screens/ProductListScreen.tsx
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
-  TextInput,
+  FlatList,
   TouchableOpacity,
+  Image,
   StyleSheet,
-  Alert,
+  TextInput,
   ActivityIndicator,
+  Alert,
+  RefreshControl,
 } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { RootStackParamList } from '../../App'; // Ajusta la ruta según tu proyecto
+import { RootStackParamList } from '../../App';
 
-type LoginScreenNavigationProp = NativeStackNavigationProp<
+type ProductListScreenNavigationProp = NativeStackNavigationProp<
   RootStackParamList,
-  'Login'
+  'ProductList'
 >;
 
 type Props = {
-  navigation: LoginScreenNavigationProp;
+  navigation: ProductListScreenNavigationProp;
 };
 
-const LoginScreen: React.FC<Props> = ({ navigation }) => {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [loading, setLoading] = useState(false);
+type Product = {
+  ID_PRODUCTO: number;
+  NOMBRE: string;
+  DESCRIPCION: string;
+  TIPO: string;
+  PRECIO_COSTO: number;
+  PRECIO_VENTA: number;
+  STOCK: number;
+  ID_SUCURSAL: number;
+};
 
-  const handleLogin = () => {
-    if (!email || !password) {
-      Alert.alert('Error', 'Por favor ingresa correo y contraseña');
-      return;
-    }
+const API_URL = 'http://192.168.1.155:4000/api/productos/';
 
-    setLoading(true);
-    setTimeout(() => {
+const ProductListScreen: React.FC<Props> = ({ navigation }) => {
+  const [products, setProducts] = useState<Product[]>([]);
+  const [filteredProducts, setFilteredProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [refreshing, setRefreshing] = useState(false);
+
+  const fetchProducts = async () => {
+    try {
+      const response = await fetch(API_URL);
+      if (!response.ok) throw new Error('Error HTTP ' + response.status);
+      const data = await response.json();
+      setProducts(data);
+      setFilteredProducts(data);
+    } catch (error: any) {
+      console.error('⚠️ Error en la petición:', error.message || error);
+      Alert.alert(
+        'Error',
+        'No se pudo conectar con la API. Revisa tu red y que el servidor esté corriendo.'
+      );
+    } finally {
       setLoading(false);
-      Alert.alert('Login exitoso', `Bienvenido ${email}`);
-      // Navega al panel de inventario reemplazando la pantalla de Login
-      navigation.replace('ProductList');
-    }, 1000);
+      setRefreshing(false);
+    }
   };
+
+  // Llamada inicial + polling cada 10 segundos
+  useEffect(() => {
+    let isMounted = true;
+    fetchProducts();
+
+    const interval = setInterval(() => {
+      if (isMounted) fetchProducts();
+    }, 10000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, []);
+
+  const handleSearch = (text: string) => {
+    setSearch(text);
+    const filtered = products.filter((p) =>
+      p.NOMBRE.toLowerCase().includes(text.toLowerCase())
+    );
+    setFilteredProducts(filtered);
+  };
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    fetchProducts();
+  };
+
+  if (loading) {
+    return (
+      <View style={styles.loading}>
+        <ActivityIndicator size="large" color="#007AFF" />
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Iniciar Sesión</Text>
       <TextInput
-        style={styles.input}
-        placeholder="Correo"
-        autoCapitalize="none"
-        keyboardType="email-address"
-        value={email}
-        onChangeText={setEmail}
+        style={styles.searchInput}
+        placeholder="Buscar producto..."
+        value={search}
+        onChangeText={handleSearch}
       />
-      <TextInput
-        style={styles.input}
-        placeholder="Contraseña"
-        secureTextEntry
-        value={password}
-        onChangeText={setPassword}
-      />
-      <TouchableOpacity style={styles.button} onPress={handleLogin}>
-        {loading ? (
-          <ActivityIndicator color="#fff" />
-        ) : (
-          <Text style={styles.buttonText}>Ingresar</Text>
+
+      <FlatList
+        data={filteredProducts}
+        keyExtractor={(item) => item.ID_PRODUCTO.toString()}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
+        renderItem={({ item }) => (
+          <TouchableOpacity
+            style={styles.card}
+            onPress={() => navigation.navigate('ProductDetail', { product: item })}
+          >
+            <Image
+              source={{
+                uri: 'https://via.placeholder.com/80', // Cambia si tu DB tiene URL real de imagen
+              }}
+              style={styles.image}
+            />
+            <View style={styles.info}>
+              <Text style={styles.name}>{item.NOMBRE}</Text>
+              <Text style={styles.brand}>{item.TIPO}</Text>
+              <Text style={styles.price}>${item.PRECIO_VENTA}</Text>
+              <Text>Cantidad: {item.STOCK}</Text>
+              <Text numberOfLines={2}>{item.DESCRIPCION}</Text>
+            </View>
+          </TouchableOpacity>
         )}
-      </TouchableOpacity>
+      />
     </View>
   );
 };
 
-export default LoginScreen;
+export default ProductListScreen;
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: 'center',
-    paddingHorizontal: 20,
-    backgroundColor: '#f2f2f2',
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: '700',
-    marginBottom: 30,
-    textAlign: 'center',
-  },
-  input: {
+  container: { flex: 1, padding: 10, backgroundColor: '#f2f2f2' },
+  searchInput: {
     backgroundColor: '#fff',
-    paddingHorizontal: 15,
-    paddingVertical: 12,
+    padding: 10,
     borderRadius: 8,
-    marginBottom: 15,
-    fontSize: 16,
+    marginBottom: 10,
   },
-  button: {
-    backgroundColor: '#007AFF',
-    paddingVertical: 15,
+  card: {
+    flexDirection: 'row',
+    backgroundColor: '#fff',
     borderRadius: 8,
+    padding: 10,
+    marginBottom: 10,
     alignItems: 'center',
   },
-  buttonText: {
-    color: '#fff',
-    fontWeight: '700',
-    fontSize: 16,
-  },
+  image: { width: 80, height: 80, marginRight: 10, borderRadius: 8 },
+  info: { flex: 1 },
+  name: { fontWeight: '700', fontSize: 16 },
+  brand: { color: '#555' },
+  price: { color: '#007AFF', fontWeight: '700', marginVertical: 5 },
+  loading: { flex: 1, justifyContent: 'center', alignItems: 'center' },
 });
